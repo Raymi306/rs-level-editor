@@ -198,34 +198,63 @@ impl eframe::App for MyApp {
                 .allow_drag(false)
                 .allow_double_click_reset(false)
                 .show(ui, |plot_ui| {
-                    let mut drag_delta = plot_ui.pointer_coordinate_drag_delta();
-                    // float comparisons suck
-                    if drag_delta.x == -0.0 {
-                        drag_delta.x = 0.0;
+                    let ctx = plot_ui.ctx();
+                    let mut primary_clicked = false;
+                    let mut secondary_clicked = false;
+                    for event in &ctx.input().raw.events {
+                        if let egui::Event::PointerButton { button, pressed, .. } = event {
+                            if *pressed {
+                                match button {
+                                    egui::PointerButton::Primary => primary_clicked = true,
+                                    egui::PointerButton::Secondary => secondary_clicked = true,
+                                    _ => (),
+                                }
+                            }
+                        }
                     }
-                    if drag_delta.y == -0.0 {
-                        drag_delta.y = 0.0;
+                    let drag_delta = plot_ui.pointer_coordinate_drag_delta();
+                    let is_drag;
+
+                    // attempting to stop user from clicking with a slight drag on mouse getting
+                    // detected as a drag within a single square, thus performing 2 actions at once
+                    if !(drag_delta.x > -0.03 && drag_delta.x < 0.03) || !(drag_delta.y > -0.03 && drag_delta.y < 0.03) {
+                        is_drag = true;
+                    } else {
+                        is_drag = false;
                     }
-                    let is_drag = drag_delta.x != 0.0 || drag_delta.y != 0.0;
-                    if plot_ui.plot_clicked() || is_drag {
+                    if primary_clicked || secondary_clicked || is_drag {
                         if let (Some(coord), Some(selected_uv)) =
                             (plot_ui.pointer_coordinate(), self.selected_uv)
                         {
+
+                            println!("{:?}", drag_delta);
                             let coord_x = coord.x.floor();
                             let coord_y = coord.y.floor();
                             let point = egui::widgets::plot::PlotPoint {
                                 x: coord_x,
                                 y: coord_y,
                             };
-                            if !is_drag {
-                                if let None = self.plotted_tiles.remove(&HashableVec2::from(point))
-                                {
-                                    self.plotted_tiles
-                                        .insert(HashableVec2::from(point), selected_uv);
+                            if primary_clicked || is_drag {
+                                if !is_drag {
+                                    if let None = self.plotted_tiles.remove(&HashableVec2::from(point))
+                                    {
+                                        self.plotted_tiles
+                                            .insert(HashableVec2::from(point), selected_uv);
+                                    }
+                                } else {
+                                    let plot_bounds = plot_ui.plot_bounds();
+                                    let min = plot_bounds.min();
+                                    let max = plot_bounds.max();
+                                    if !(coord.x < min[0] || coord.x > max[0] || coord.y < min[1] || coord.y > max[1]) {
+                                        self.plotted_tiles
+                                            .insert(HashableVec2::from(point), selected_uv);
+                                    }
                                 }
-                            } else {
-                                self.plotted_tiles
-                                    .insert(HashableVec2::from(point), selected_uv);
+                            }
+                            else if secondary_clicked {
+                                if let Some(uv) = self.plotted_tiles.get(&HashableVec2::from(point)) {
+                                    self.selected_uv = Some(*uv);
+                                }
                             }
                         }
                     }
