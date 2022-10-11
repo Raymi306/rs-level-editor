@@ -52,28 +52,22 @@ enum Layer {
 }
 
 struct MyApp {
-    save_path: Option<PathBuf>,
-    open_path: Option<PathBuf>,
     spritesheet_info: SpritesheetInfo,
     spritesheet_handle: Option<egui::TextureHandle>,
     foreground_plotted_tiles: HashMap<HashableVec2, Rect>,
     background_plotted_tiles: HashMap<HashableVec2, Rect>,
-    foreground_selected_uv: Option<Rect>,
-    background_selected_uv: Option<Rect>,
+    selected_uv: Option<Rect>,
     current_layer: Layer,
 }
 
 impl Default for MyApp {
     fn default() -> Self {
         Self {
-            save_path: None,             // make local
-            open_path: None,             // make local
             spritesheet_info: SpritesheetInfo::default(),
             spritesheet_handle: None,
             foreground_plotted_tiles: HashMap::new(),
             background_plotted_tiles: HashMap::new(),
-            foreground_selected_uv: None,
-            background_selected_uv: None,
+            selected_uv: None,
             current_layer: Layer::Background,
         }
     }
@@ -93,11 +87,13 @@ impl MyApp {
     fn top_panel(&mut self, ctx: &egui::Context) {
         egui::TopBottomPanel::top("my_top_panel").show(ctx, |ui| {
             ui.horizontal(|ui| {
+                let mut save_path = None;
+                let mut open_path = None;
                 if ui.small_button("Save").on_hover_text("Ctrl + S").clicked() {
-                    pick_file_to(&mut self.save_path, ("Level", &["lvl"]));
+                    pick_file_to(&mut save_path, ("Level", &["lvl"]));
                 }
                 if ui.small_button("Open").on_hover_text("Ctrl + O").clicked() {
-                    pick_file_to(&mut self.open_path, ("Level", &["lvl"]));
+                    pick_file_to(&mut open_path, ("Level", &["lvl"]));
                 }
                 ui.separator();
                 ui.radio_value(&mut self.current_layer, Layer::Background, "Background")
@@ -157,18 +153,11 @@ impl MyApp {
                             },
                         )
                         .uv(uv);
-                        let selected_uv = match self.current_layer {
-                            Layer::Foreground => &mut self.foreground_selected_uv,
-                            Layer::Background => &mut self.background_selected_uv,
-                        };
-                        if *selected_uv == Some(uv) {
+                        if self.selected_uv == Some(uv) {
                             img_btn = img_btn.selected(true);
                         }
                         if ui.add(img_btn).clicked() {
-                            match self.current_layer {
-                                Layer::Foreground => self.foreground_selected_uv = Some(uv),
-                                Layer::Background => self.background_selected_uv = Some(uv),
-                            };
+                            self.selected_uv = Some(uv);
                         };
                     }
                 }
@@ -176,7 +165,12 @@ impl MyApp {
         });
     }
 
-    fn side_panel_spritesheet_preview(&mut self, ctx: &egui::Context, ui: &mut egui::Ui, spritesheet_path: Option<PathBuf>) {
+    fn side_panel_spritesheet_preview(
+        &mut self,
+        ctx: &egui::Context,
+        ui: &mut egui::Ui,
+        spritesheet_path: Option<PathBuf>,
+    ) {
         if let Some(path) = spritesheet_path {
             let image_result = image::io::Reader::open(path).unwrap().decode();
             if image_result.is_err() {
@@ -256,19 +250,13 @@ impl MyApp {
                     } else {
                         is_drag = false;
                     }
-                    let (layer_selected_uv, layer_plotted_tiles) = match self.current_layer {
-                        Layer::Foreground => (
-                            &mut self.foreground_selected_uv,
-                            &mut self.foreground_plotted_tiles,
-                        ),
-                        Layer::Background => (
-                            &mut self.background_selected_uv,
-                            &mut self.background_plotted_tiles,
-                        ),
+                    let layer_plotted_tiles = match self.current_layer {
+                        Layer::Foreground => &mut self.foreground_plotted_tiles,
+                        Layer::Background => &mut self.background_plotted_tiles,
                     };
                     if primary_clicked || secondary_clicked || is_drag {
                         if let (Some(coord), Some(selected_uv)) =
-                            (plot_ui.pointer_coordinate(), layer_selected_uv)
+                            (plot_ui.pointer_coordinate(), self.selected_uv)
                         {
                             let coord_x = coord.x.floor();
                             let coord_y = coord.y.floor();
@@ -290,24 +278,17 @@ impl MyApp {
                                             layer_plotted_tiles.remove(&HashableVec2::from(point))
                                         {
                                             layer_plotted_tiles
-                                                .insert(HashableVec2::from(point), *selected_uv);
+                                                .insert(HashableVec2::from(point), selected_uv);
                                         }
                                     } else {
                                         layer_plotted_tiles
-                                            .insert(HashableVec2::from(point), *selected_uv);
+                                            .insert(HashableVec2::from(point), selected_uv);
                                     }
                                 } else if secondary_clicked {
                                     if let Some(uv) =
                                         layer_plotted_tiles.get(&HashableVec2::from(point))
                                     {
-                                        match self.current_layer {
-                                            Layer::Foreground => {
-                                                self.foreground_selected_uv = Some(*uv)
-                                            }
-                                            Layer::Background => {
-                                                self.background_selected_uv = Some(*uv)
-                                            }
-                                        };
+                                        self.selected_uv = Some(*uv);
                                     }
                                 }
                             }
