@@ -29,7 +29,6 @@ impl From<HashableVec2> for egui::widgets::plot::PlotPoint {
     }
 }
 
-// f32's because they're controled by an egui::widgets::DragValue
 struct SpritesheetInfo {
     sprite_size: u16,
     num_rows: u8,
@@ -55,7 +54,6 @@ enum Layer {
 struct MyApp {
     save_path: Option<PathBuf>,
     open_path: Option<PathBuf>,
-    open_spritesheet_path: Option<PathBuf>,
     spritesheet_info: SpritesheetInfo,
     spritesheet_handle: Option<egui::TextureHandle>,
     foreground_plotted_tiles: HashMap<HashableVec2, Rect>,
@@ -70,7 +68,6 @@ impl Default for MyApp {
         Self {
             save_path: None,             // make local
             open_path: None,             // make local
-            open_spritesheet_path: None, // make local
             spritesheet_info: SpritesheetInfo::default(),
             spritesheet_handle: None,
             foreground_plotted_tiles: HashMap::new(),
@@ -179,9 +176,13 @@ impl MyApp {
         });
     }
 
-    fn side_panel_spritesheet_preview(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
-        if let Some(path) = &self.open_spritesheet_path {
-            let image = image::io::Reader::open(path).unwrap().decode().unwrap();
+    fn side_panel_spritesheet_preview(&mut self, ctx: &egui::Context, ui: &mut egui::Ui, spritesheet_path: Option<PathBuf>) {
+        if let Some(path) = spritesheet_path {
+            let image_result = image::io::Reader::open(path).unwrap().decode();
+            if image_result.is_err() {
+                return;
+            }
+            let image = image_result.unwrap();
             let size = [image.width() as usize, image.height() as usize];
             let image_buffer = image.to_rgba8();
             let pixels = image_buffer.as_flat_samples();
@@ -196,13 +197,14 @@ impl MyApp {
     fn side_panel(&mut self, ctx: &egui::Context) {
         egui::SidePanel::right("my_right_panel").show(ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
+                let mut spritesheet_path = None;
                 if ui.button("Open Spritesheet").clicked() {
                     pick_file_to(
-                        &mut self.open_spritesheet_path,
+                        &mut spritesheet_path,
                         ("image", &["webp", "png", "bmp", "jpg", "jpeg"]),
                     );
                 }
-                self.side_panel_spritesheet_preview(ctx, ui);
+                self.side_panel_spritesheet_preview(ctx, ui, spritesheet_path);
                 self.side_panel_settings(ui);
                 ui.separator();
                 self.side_panel_sprite_selector(ui);
