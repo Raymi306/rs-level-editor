@@ -58,6 +58,7 @@ struct MyApp {
     background_plotted_tiles: HashMap<HashableVec2, Rect>,
     selected_uv: Option<Rect>,
     current_layer: Layer,
+    show_clear_confirmation: bool,
 }
 
 impl Default for MyApp {
@@ -69,6 +70,7 @@ impl Default for MyApp {
             background_plotted_tiles: HashMap::new(),
             selected_uv: None,
             current_layer: Layer::Background,
+            show_clear_confirmation: false,
         }
     }
 }
@@ -94,6 +96,10 @@ impl MyApp {
                 }
                 if ui.small_button("Open").on_hover_text("Ctrl + O").clicked() {
                     pick_file_to(&mut open_path, ("Level", &["lvl"]));
+                }
+                ui.separator();
+                if ui.small_button("Clear").clicked() {
+                    self.show_clear_confirmation = true;
                 }
                 ui.separator();
                 ui.radio_value(&mut self.current_layer, Layer::Background, "Background")
@@ -248,8 +254,7 @@ impl MyApp {
                     {
                         is_drag = true;
                     } else {
-                        is_drag = false;
-                    }
+                        is_drag = false; }
                     let layer_plotted_tiles = match self.current_layer {
                         Layer::Foreground => &mut self.foreground_plotted_tiles,
                         Layer::Background => &mut self.background_plotted_tiles,
@@ -271,6 +276,8 @@ impl MyApp {
                                 || coord.x > max[0]
                                 || coord.y < min[1]
                                 || coord.y > max[1])
+                                && !self.show_clear_confirmation // stop adding new sprites when
+                                                                 // pop up is open
                             {
                                 if primary_clicked || is_drag {
                                     if !is_drag {
@@ -356,10 +363,30 @@ impl MyApp {
             }
         }
     }
+    fn handle_clear_confirmation(&mut self, ctx: &egui::Context) {
+        if self.show_clear_confirmation {
+            egui::Window::new("Are you sure you want to erase everything?")
+                .collapsible(false)
+                .resizable(false)
+                .show(ctx, |ui| {
+                    ui.horizontal(|ui| {
+                        if ui.button("Cancel").clicked() {
+                            self.show_clear_confirmation = false;
+                        }
+                        if ui.button("Ok").clicked() {
+                            self.show_clear_confirmation = false;
+                            self.foreground_plotted_tiles.clear();
+                            self.background_plotted_tiles.clear();
+                        }
+                    });
+                });
+        }
+    }
 }
 
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.handle_clear_confirmation(ctx);
         self.handle_toplevel_input(ctx);
         self.top_panel(ctx);
         self.side_panel(ctx);
