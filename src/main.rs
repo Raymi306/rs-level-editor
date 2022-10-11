@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 use eframe;
@@ -51,14 +51,27 @@ enum Layer {
     Background,
 }
 
+#[derive(PartialEq, Debug)]
+enum Mode {
+    Draw,
+    Collision,
+    Entity,
+}
+
 struct MyApp {
     spritesheet_info: SpritesheetInfo,
     spritesheet_handle: Option<egui::TextureHandle>,
     foreground_plotted_tiles: HashMap<HashableVec2, Rect>,
     background_plotted_tiles: HashMap<HashableVec2, Rect>,
+    collision_tiles: HashSet<HashableVec2>,
+    entity_tiles: HashSet<HashableVec2>,
     selected_uv: Option<Rect>,
+    current_mode: Mode,
     current_layer: Layer,
     show_clear_confirmation: bool,
+    show_draw: bool,
+    show_collision: bool,
+    show_entity: bool,
 }
 
 impl Default for MyApp {
@@ -68,9 +81,15 @@ impl Default for MyApp {
             spritesheet_handle: None,
             foreground_plotted_tiles: HashMap::new(),
             background_plotted_tiles: HashMap::new(),
+            collision_tiles: HashSet::new(),
+            entity_tiles: HashSet::new(),
             selected_uv: None,
             current_layer: Layer::Background,
+            current_mode: Mode::Draw,
             show_clear_confirmation: false,
+            show_draw: true,
+            show_collision: true,
+            show_entity: true,
         }
     }
 }
@@ -106,6 +125,18 @@ impl MyApp {
                     .on_hover_text("L");
                 ui.radio_value(&mut self.current_layer, Layer::Foreground, "Foreground")
                     .on_hover_text("L");
+                ui.separator();
+                ui.radio_value(&mut self.current_mode, Mode::Draw, "Draw")
+                    .on_hover_text("M");
+                ui.radio_value(&mut self.current_mode, Mode::Collision, "Collision")
+                    .on_hover_text("M");
+                ui.radio_value(&mut self.current_mode, Mode::Entity, "Entity")
+                    .on_hover_text("M");
+                ui.separator();
+                ui.label("View Filter");
+                ui.checkbox(&mut self.show_draw, "Draw");
+                ui.checkbox(&mut self.show_collision, "Collision");
+                ui.checkbox(&mut self.show_entity, "Entity");
             });
         });
     }
@@ -254,15 +285,14 @@ impl MyApp {
                     {
                         is_drag = true;
                     } else {
-                        is_drag = false; }
+                        is_drag = false;
+                    }
                     let layer_plotted_tiles = match self.current_layer {
                         Layer::Foreground => &mut self.foreground_plotted_tiles,
                         Layer::Background => &mut self.background_plotted_tiles,
                     };
                     if primary_clicked || secondary_clicked || is_drag {
-                        if let (Some(coord), Some(selected_uv)) =
-                            (plot_ui.pointer_coordinate(), self.selected_uv)
-                        {
+                        if let Some(coord) = plot_ui.pointer_coordinate() {
                             let coord_x = coord.x.floor();
                             let coord_y = coord.y.floor();
                             let point = egui::widgets::plot::PlotPoint {
@@ -272,30 +302,59 @@ impl MyApp {
                             let plot_bounds = plot_ui.plot_bounds();
                             let min = plot_bounds.min();
                             let max = plot_bounds.max();
+                            let hashable_point = HashableVec2::from(point);
                             if !(coord.x < min[0]
                                 || coord.x > max[0]
                                 || coord.y < min[1]
                                 || coord.y > max[1])
-                                && !self.show_clear_confirmation // stop adding new sprites when
-                                                                 // pop up is open
+                                && !self.show_clear_confirmation
+                            // stop when pop up is open
                             {
-                                if primary_clicked || is_drag {
-                                    if !is_drag {
-                                        if let None =
-                                            layer_plotted_tiles.remove(&HashableVec2::from(point))
-                                        {
-                                            layer_plotted_tiles
-                                                .insert(HashableVec2::from(point), selected_uv);
+                                match self.current_mode {
+                                    Mode::Draw => {
+                                        if let Some(selected_uv) = self.selected_uv {
+                                            if primary_clicked || is_drag {
+                                                if !is_drag {
+                                                    if let None =
+                                                        layer_plotted_tiles.remove(&hashable_point)
+                                                    {
+                                                        layer_plotted_tiles
+                                                            .insert(hashable_point, selected_uv);
+                                                    }
+                                                } else {
+                                                    layer_plotted_tiles
+                                                        .insert(hashable_point, selected_uv);
+                                                }
+                                            } else if secondary_clicked {
+                                                if let Some(uv) =
+                                                    layer_plotted_tiles.get(&hashable_point)
+                                                {
+                                                    self.selected_uv = Some(*uv);
+                                                }
+                                            }
                                         }
-                                    } else {
-                                        layer_plotted_tiles
-                                            .insert(HashableVec2::from(point), selected_uv);
                                     }
-                                } else if secondary_clicked {
-                                    if let Some(uv) =
-                                        layer_plotted_tiles.get(&HashableVec2::from(point))
-                                    {
-                                        self.selected_uv = Some(*uv);
+                                    Mode::Collision => {
+                                        if primary_clicked || is_drag {
+                                            if !is_drag {
+                                                if !self.collision_tiles.remove(&hashable_point) {
+                                                    self.collision_tiles.insert(hashable_point);
+                                                }
+                                            } else {
+                                                self.collision_tiles.insert(hashable_point);
+                                            }
+                                        }
+                                    }
+                                    Mode::Entity => {
+                                        if primary_clicked || is_drag {
+                                            if !is_drag {
+                                                if !self.entity_tiles.remove(&hashable_point) {
+                                                    self.entity_tiles.insert(hashable_point);
+                                                }
+                                            } else {
+                                                self.entity_tiles.insert(hashable_point);
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -303,40 +362,70 @@ impl MyApp {
                     }
                     // Draw sprites, background then foreground
                     if let Some(handle) = &self.spritesheet_handle {
-                        let handle_size = handle.size_vec2();
-                        for (point, uv) in &self.background_plotted_tiles {
-                            let final_coord = egui::widgets::plot::PlotPoint {
-                                x: point.x as f64 + 0.5,
-                                y: point.y as f64 + 0.5,
-                            };
-                            let img = egui::widgets::plot::PlotImage::new(
-                                handle,
-                                final_coord,
-                                Vec2 {
-                                    x: handle_size.x / self.spritesheet_info.num_rows as f32,
-                                    y: handle_size.y / self.spritesheet_info.num_cols as f32,
-                                } / self.spritesheet_info.sprite_size as f32,
-                            )
-                            .uv(*uv);
-                            plot_ui.image(img);
-                        }
-                        for (point, uv) in &self.foreground_plotted_tiles {
-                            let final_coord = egui::widgets::plot::PlotPoint {
-                                x: point.x as f64 + 0.5,
-                                y: point.y as f64 + 0.5,
-                            };
-                            let img = egui::widgets::plot::PlotImage::new(
-                                handle,
-                                final_coord,
-                                Vec2 {
-                                    x: handle_size.x / self.spritesheet_info.num_rows as f32,
-                                    y: handle_size.y / self.spritesheet_info.num_cols as f32,
-                                } / self.spritesheet_info.sprite_size as f32,
-                            )
-                            .uv(*uv);
-                            plot_ui.image(img);
+                        if self.show_draw {
+                            let handle_size = handle.size_vec2();
+                            for (point, uv) in &self.background_plotted_tiles {
+                                let final_coord = egui::widgets::plot::PlotPoint {
+                                    x: point.x as f64 + 0.5,
+                                    y: point.y as f64 + 0.5,
+                                };
+                                let img = egui::widgets::plot::PlotImage::new(
+                                    handle,
+                                    final_coord,
+                                    Vec2 {
+                                        x: handle_size.x / self.spritesheet_info.num_rows as f32,
+                                        y: handle_size.y / self.spritesheet_info.num_cols as f32,
+                                    } / self.spritesheet_info.sprite_size as f32,
+                                )
+                                .uv(*uv);
+                                plot_ui.image(img);
+                            }
+                            for (point, uv) in &self.foreground_plotted_tiles {
+                                let final_coord = egui::widgets::plot::PlotPoint {
+                                    x: point.x as f64 + 0.5,
+                                    y: point.y as f64 + 0.5,
+                                };
+                                let img = egui::widgets::plot::PlotImage::new(
+                                    handle,
+                                    final_coord,
+                                    Vec2 {
+                                        x: handle_size.x / self.spritesheet_info.num_rows as f32,
+                                        y: handle_size.y / self.spritesheet_info.num_cols as f32,
+                                    } / self.spritesheet_info.sprite_size as f32,
+                                )
+                                .uv(*uv);
+                                plot_ui.image(img);
+                            }
                         }
                     }
+                    // can draw these even without spritesheet
+                    let collision_plot_points: Vec<[f64; 2]> = self
+                        .collision_tiles
+                        .iter()
+                        .map(|point| [point.x as f64 + 0.5, point.y as f64 + 0.5])
+                        .collect();
+                    let collision_points = egui::plot::Points::new(collision_plot_points)
+                        .filled(false)
+                        .radius(10.0)
+                        .shape(egui::plot::MarkerShape::Square)
+                        .color(egui::Color32::from_rgb(255, 0, 0));
+                    let entity_plot_points: Vec<[f64; 2]> = self
+                        .entity_tiles
+                        .iter()
+                        .map(|point| [point.x as f64 + 0.5, point.y as f64 + 0.5])
+                        .collect();
+                    let entity_points = egui::plot::Points::new(entity_plot_points)
+                        .filled(false)
+                        .radius(10.0)
+                        .shape(egui::plot::MarkerShape::Diamond)
+                        .color(egui::Color32::from_rgb(0, 255, 255));
+                    if self.show_collision {
+                        plot_ui.points(collision_points);
+                    }
+                    if self.show_entity {
+                        plot_ui.points(entity_points);
+                    }
+
                 });
         });
     }
@@ -344,6 +433,13 @@ impl MyApp {
         self.current_layer = match self.current_layer {
             Layer::Foreground => Layer::Background,
             Layer::Background => Layer::Foreground,
+        }
+    }
+    fn toggle_current_mode(&mut self) {
+        self.current_mode = match self.current_mode {
+            Mode::Draw => Mode::Collision,
+            Mode::Collision => Mode::Entity,
+            Mode::Entity => Mode::Draw,
         }
     }
     fn handle_toplevel_input(&mut self, ctx: &egui::Context) {
@@ -357,6 +453,7 @@ impl MyApp {
                 if !*pressed {
                     match key {
                         egui::Key::L => self.toggle_current_layer(),
+                        egui::Key::M => self.toggle_current_mode(),
                         _ => (),
                     };
                 }
