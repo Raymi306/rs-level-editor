@@ -100,7 +100,7 @@ impl MyApp {
                     pick_file_to(&mut self.save_path, ("Level", &["lvl",]));
                 }
                 if ui.small_button("Open").on_hover_text("Ctrl + O").clicked() {
-                    pick_file_to(&mut self.open_path, ("Level", &["lv;",]));
+                    pick_file_to(&mut self.open_path, ("Level", &["lvl",]));
                 }
                 ui.separator();
                 ui.radio_value(&mut self.current_layer, Layer::Background, "Background").on_hover_text("L");
@@ -247,6 +247,8 @@ impl MyApp {
 
                     // attempting to stop user from clicking with a slight drag on mouse getting
                     // detected as a drag within a single square, thus performing 2 actions at once
+                    // TODO a better alternative would be to add the delta with the position and see if
+                    // it steps into another tile
                     if !(drag_delta.x > -0.05 && drag_delta.x < 0.05) || !(drag_delta.y > -0.05 && drag_delta.y < 0.05) {
                         is_drag = true;
                     } else {
@@ -293,6 +295,7 @@ impl MyApp {
                             }
                         }
                     }
+                    // Draw sprites, background then foreground
                     if let Some(handle) = &self.spritesheet_handle {
                         let handle_size = handle.size_vec2();
                         for (point, uv) in &self.background_plotted_tiles {
