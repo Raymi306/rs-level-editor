@@ -338,7 +338,6 @@ impl MyApp {
                                         }
                                     }
                                     Mode::Collision => {
-                                        // TODO can I smoosh this in with entity?
                                         if primary_clicked || is_drag {
                                             if !is_drag {
                                                 if !self.collision_tiles.remove(&hashable_point) {
