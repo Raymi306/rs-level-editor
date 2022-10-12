@@ -489,6 +489,9 @@ impl MyApp {
                             self.show_clear_confirmation = false;
                             self.foreground_plotted_tiles.clear();
                             self.background_plotted_tiles.clear();
+                            self.collision_tiles.clear();
+                            self.entity_descriptions.clear();
+                            self.entity_tiles.clear();
                         }
                     });
                 });
