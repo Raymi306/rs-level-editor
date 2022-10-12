@@ -63,6 +63,7 @@ struct MyApp {
     selected_uv: Option<Rect>,
     selected_entity: Option<HashableVec2>,
     entity_description: String,
+    prev_entity_description: String,
     entity_descriptions: BTreeSet<String>,
     current_mode: Mode,
     show_entity_popup: bool,
@@ -85,6 +86,7 @@ impl Default for MyApp {
             selected_uv: None,
             selected_entity: None,
             entity_description: "".to_string(),
+            prev_entity_description: "".to_string(),
             entity_descriptions: BTreeSet::new(),
             current_mode: Mode::DrawBackground,
             show_entity_popup: false,
@@ -352,10 +354,12 @@ impl MyApp {
                                         if primary_clicked || is_drag {
                                             if !is_drag {
                                                 if let Some(label) = self.entity_tiles.remove(&hashable_point) {
+                                                    println!("REMOVING LABEL: {}", label);
                                                     self.entity_descriptions.remove(&label);
                                                 } else {
                                                     self.entity_tiles.insert(hashable_point, "".to_owned());
                                                     self.show_entity_popup = true;
+                                                    self.prev_entity_description = "".to_owned();
                                                     self.selected_entity = Some(hashable_point);
                                                 }
                                             }
@@ -363,6 +367,7 @@ impl MyApp {
                                             if let Some(description) = self.entity_tiles.get(&hashable_point) {
                                                 self.show_entity_popup = true;
                                                 self.entity_description = description.clone();
+                                                self.prev_entity_description = self.entity_description.clone();
                                                 self.selected_entity = Some(hashable_point);
                                             }
                                         }
@@ -498,6 +503,10 @@ impl MyApp {
     }
 
     fn do_entity_ok(&mut self, entity_key: HashableVec2) {
+        println!("prev: {}, current: {}", self.prev_entity_description, self.entity_description);
+        if self.prev_entity_description != self.entity_description {
+            self.entity_descriptions.remove(&self.prev_entity_description);
+        }
         self.show_entity_popup = false;
         self.entity_tiles.insert(entity_key, self.entity_description.clone());
         self.entity_descriptions.insert(self.entity_description.clone());
@@ -511,6 +520,7 @@ impl MyApp {
                 .resizable(false)
                 .show(ctx, |ui| {
                     let response = ui.add(egui::TextEdit::singleline(&mut self.entity_description));
+                    self.entity_description = self.entity_description.trim().to_string();
                     if response.lost_focus() && ui.input().key_pressed(egui::Key::Enter) {
                         let (description_is_ok, entity_key) = self.entity_description_is_ok();
                         if description_is_ok {
@@ -531,7 +541,8 @@ impl MyApp {
                     ui.horizontal(|ui| {
                         if ui.button("Cancel").clicked() {
                             let (description_is_ok, entity_key) = self.entity_description_is_ok();
-                            if !description_is_ok {
+                            println!("prev: {}, current: {}", self.prev_entity_description, self.entity_description);
+                            if (!description_is_ok && !self.prev_entity_description.len() == 0) || self.prev_entity_description.len() == 0 {
                                 self.entity_tiles.remove(&entity_key);
                             }
                             self.show_entity_popup = false;
