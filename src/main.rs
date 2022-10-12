@@ -489,13 +489,35 @@ impl MyApp {
                 });
         }
     }
+    // TODO maybe pass the entity key in rather than getting it inside
+    fn entity_description_is_ok(&self) -> (bool, HashableVec2) {
+        if let Some(entity_key) = self.selected_entity {
+            return (!self.entity_descriptions.contains(&self.entity_description) && self.entity_description.len() != 0, entity_key);
+        }
+        unreachable!(); // boy I hope so
+    }
+
+    fn do_entity_ok(&mut self, entity_key: HashableVec2) {
+        self.show_entity_popup = false;
+        self.entity_tiles.insert(entity_key, self.entity_description.clone());
+        self.entity_descriptions.insert(self.entity_description.clone());
+        self.entity_description = "".to_string();
+    }
+
     fn handle_entity_popup(&mut self, ctx: &egui::Context) {
         if self.show_entity_popup {
             egui::Window::new("Entity Label Editor")
                 .collapsible(false)
                 .resizable(false)
                 .show(ctx, |ui| {
-                    ui.text_edit_singleline(&mut self.entity_description);
+                    let response = ui.add(egui::TextEdit::singleline(&mut self.entity_description));
+                    if response.lost_focus() && ui.input().key_pressed(egui::Key::Enter) {
+                        let (description_is_ok, entity_key) = self.entity_description_is_ok();
+                        if description_is_ok {
+                            self.do_entity_ok(entity_key);
+                        }
+                    }
+                    response.request_focus();
                     ui.label("Existing Entities");
                     ui.separator();
                     egui::ScrollArea::vertical()
@@ -508,27 +530,20 @@ impl MyApp {
                     ui.separator();
                     ui.horizontal(|ui| {
                         if ui.button("Cancel").clicked() {
-                            if let Some(entity_key) = self.selected_entity {
-                                if let Some(entity_description) = self.entity_tiles.get(&entity_key) {
-                                    if entity_description.len() == 0 {
-                                        self.entity_tiles.remove(&entity_key);
-                                    }
-                                }
+                            let (description_is_ok, entity_key) = self.entity_description_is_ok();
+                            if !description_is_ok {
+                                self.entity_tiles.remove(&entity_key);
                             }
                             self.show_entity_popup = false;
                             self.entity_description = "".to_string();
                         }
-                        if !self.entity_descriptions.contains(&self.entity_description) && self.entity_description.len() > 0 {
+                        let (description_is_ok, entity_key) = self.entity_description_is_ok();
+                        if description_is_ok {
                             if ui.button("Ok").clicked() {
-                                self.show_entity_popup = false;
-                                if let Some(entity_key) = self.selected_entity {
-                                    self.entity_tiles.insert(entity_key, self.entity_description.clone());
-                                    self.entity_descriptions.insert(self.entity_description.clone());
-                                }
-                                self.entity_description = "".to_string();
+                                self.do_entity_ok(entity_key);
                             }
                         } else {
-                            ui.label("Non unique label!");
+                            ui.label("You must choose a unique label");
                         }
                     });
                 });
