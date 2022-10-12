@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, BTreeSet};
 use std::path::PathBuf;
 
 use eframe;
@@ -46,14 +46,9 @@ impl Default for SpritesheetInfo {
 }
 
 #[derive(PartialEq, Debug)]
-enum Layer {
-    Foreground,
-    Background,
-}
-
-#[derive(PartialEq, Debug)]
 enum Mode {
-    Draw,
+    DrawBackground,
+    DrawForeground,
     Collision,
     Entity,
 }
@@ -64,12 +59,16 @@ struct MyApp {
     foreground_plotted_tiles: HashMap<HashableVec2, Rect>,
     background_plotted_tiles: HashMap<HashableVec2, Rect>,
     collision_tiles: HashSet<HashableVec2>,
-    entity_tiles: HashSet<HashableVec2>,
+    entity_tiles: HashMap<HashableVec2, String>,
     selected_uv: Option<Rect>,
+    selected_entity: Option<HashableVec2>,
+    entity_description: String,
+    entity_descriptions: BTreeSet<String>,
     current_mode: Mode,
-    current_layer: Layer,
+    show_entity_popup: bool,
     show_clear_confirmation: bool,
-    show_draw: bool,
+    show_foreground: bool,
+    show_background: bool,
     show_collision: bool,
     show_entity: bool,
 }
@@ -82,12 +81,16 @@ impl Default for MyApp {
             foreground_plotted_tiles: HashMap::new(),
             background_plotted_tiles: HashMap::new(),
             collision_tiles: HashSet::new(),
-            entity_tiles: HashSet::new(),
+            entity_tiles: HashMap::new(),
             selected_uv: None,
-            current_layer: Layer::Background,
-            current_mode: Mode::Draw,
+            selected_entity: None,
+            entity_description: "".to_string(),
+            entity_descriptions: BTreeSet::new(),
+            current_mode: Mode::DrawBackground,
+            show_entity_popup: false,
             show_clear_confirmation: false,
-            show_draw: true,
+            show_foreground: true,
+            show_background: true,
             show_collision: true,
             show_entity: true,
         }
@@ -121,12 +124,9 @@ impl MyApp {
                     self.show_clear_confirmation = true;
                 }
                 ui.separator();
-                ui.radio_value(&mut self.current_layer, Layer::Background, "Background")
-                    .on_hover_text("L");
-                ui.radio_value(&mut self.current_layer, Layer::Foreground, "Foreground")
-                    .on_hover_text("L");
-                ui.separator();
-                ui.radio_value(&mut self.current_mode, Mode::Draw, "Draw")
+                ui.radio_value(&mut self.current_mode, Mode::DrawBackground, "Background")
+                    .on_hover_text("M");
+                ui.radio_value(&mut self.current_mode, Mode::DrawForeground, "Foreground")
                     .on_hover_text("M");
                 ui.radio_value(&mut self.current_mode, Mode::Collision, "Collision")
                     .on_hover_text("M");
@@ -134,7 +134,8 @@ impl MyApp {
                     .on_hover_text("M");
                 ui.separator();
                 ui.label("View Filter");
-                ui.checkbox(&mut self.show_draw, "Draw");
+                ui.checkbox(&mut self.show_foreground, "Foreground");
+                ui.checkbox(&mut self.show_background, "Background");
                 ui.checkbox(&mut self.show_collision, "Collision");
                 ui.checkbox(&mut self.show_entity, "Entity");
             });
@@ -287,10 +288,6 @@ impl MyApp {
                     } else {
                         is_drag = false;
                     }
-                    let layer_plotted_tiles = match self.current_layer {
-                        Layer::Foreground => &mut self.foreground_plotted_tiles,
-                        Layer::Background => &mut self.background_plotted_tiles,
-                    };
                     if primary_clicked || secondary_clicked || is_drag {
                         if let Some(coord) = plot_ui.pointer_coordinate() {
                             let coord_x = coord.x.floor();
@@ -308,10 +305,16 @@ impl MyApp {
                                 || coord.y < min[1]
                                 || coord.y > max[1])
                                 && !self.show_clear_confirmation
-                            // stop when pop up is open
+                                && !self.show_entity_popup
+                            // stop when pop ups are open
                             {
                                 match self.current_mode {
-                                    Mode::Draw => {
+                                    Mode::DrawForeground | Mode::DrawBackground => {
+                                        let layer_plotted_tiles = match self.current_mode {
+                                            Mode::DrawForeground => &mut self.foreground_plotted_tiles,
+                                            Mode::DrawBackground => &mut self.background_plotted_tiles,
+                                            _ => unreachable!(),
+                                        };
                                         if let Some(selected_uv) = self.selected_uv {
                                             if primary_clicked || is_drag {
                                                 if !is_drag {
@@ -335,6 +338,7 @@ impl MyApp {
                                         }
                                     }
                                     Mode::Collision => {
+                                        // TODO can I smoosh this in with entity?
                                         if primary_clicked || is_drag {
                                             if !is_drag {
                                                 if !self.collision_tiles.remove(&hashable_point) {
@@ -348,11 +352,19 @@ impl MyApp {
                                     Mode::Entity => {
                                         if primary_clicked || is_drag {
                                             if !is_drag {
-                                                if !self.entity_tiles.remove(&hashable_point) {
-                                                    self.entity_tiles.insert(hashable_point);
+                                                if let Some(label) = self.entity_tiles.remove(&hashable_point) {
+                                                    self.entity_descriptions.remove(&label);
+                                                } else {
+                                                    self.entity_tiles.insert(hashable_point, "".to_owned());
+                                                    self.show_entity_popup = true;
+                                                    self.selected_entity = Some(hashable_point);
                                                 }
-                                            } else {
-                                                self.entity_tiles.insert(hashable_point);
+                                            }
+                                        } else if secondary_clicked {
+                                            if let Some(description) = self.entity_tiles.get(&hashable_point) {
+                                                self.show_entity_popup = true;
+                                                self.entity_description = description.clone();
+                                                self.selected_entity = Some(hashable_point);
                                             }
                                         }
                                     }
@@ -362,8 +374,8 @@ impl MyApp {
                     }
                     // Draw sprites, background then foreground
                     if let Some(handle) = &self.spritesheet_handle {
-                        if self.show_draw {
-                            let handle_size = handle.size_vec2();
+                        let handle_size = handle.size_vec2();
+                        if self.show_background {
                             for (point, uv) in &self.background_plotted_tiles {
                                 let final_coord = egui::widgets::plot::PlotPoint {
                                     x: point.x as f64 + 0.5,
@@ -380,6 +392,8 @@ impl MyApp {
                                 .uv(*uv);
                                 plot_ui.image(img);
                             }
+                        }
+                        if self.show_foreground {
                             for (point, uv) in &self.foreground_plotted_tiles {
                                 let final_coord = egui::widgets::plot::PlotPoint {
                                     x: point.x as f64 + 0.5,
@@ -412,7 +426,7 @@ impl MyApp {
                     let entity_plot_points: Vec<[f64; 2]> = self
                         .entity_tiles
                         .iter()
-                        .map(|point| [point.x as f64 + 0.5, point.y as f64 + 0.5])
+                        .map(|(point, _)| [point.x as f64 + 0.5, point.y as f64 + 0.5])
                         .collect();
                     let entity_points = egui::plot::Points::new(entity_plot_points)
                         .filled(false)
@@ -429,20 +443,18 @@ impl MyApp {
                 });
         });
     }
-    fn toggle_current_layer(&mut self) {
-        self.current_layer = match self.current_layer {
-            Layer::Foreground => Layer::Background,
-            Layer::Background => Layer::Foreground,
-        }
-    }
     fn toggle_current_mode(&mut self) {
         self.current_mode = match self.current_mode {
-            Mode::Draw => Mode::Collision,
+            Mode::DrawBackground => Mode::DrawForeground,
+            Mode::DrawForeground => Mode::Collision,
             Mode::Collision => Mode::Entity,
-            Mode::Entity => Mode::Draw,
+            Mode::Entity => Mode::DrawBackground,
         }
     }
     fn handle_toplevel_input(&mut self, ctx: &egui::Context) {
+        if self.show_clear_confirmation || self.show_entity_popup {
+            return;
+        }
         for event in &ctx.input().raw.events {
             if let egui::Event::Key {
                 key,
@@ -452,7 +464,6 @@ impl MyApp {
             {
                 if !*pressed {
                     match key {
-                        egui::Key::L => self.toggle_current_layer(),
                         egui::Key::M => self.toggle_current_mode(),
                         _ => (),
                     };
@@ -479,11 +490,57 @@ impl MyApp {
                 });
         }
     }
+    fn handle_entity_popup(&mut self, ctx: &egui::Context) {
+        if self.show_entity_popup {
+            egui::Window::new("Entity Label Editor")
+                .collapsible(false)
+                .resizable(false)
+                .show(ctx, |ui| {
+                    ui.text_edit_singleline(&mut self.entity_description);
+                    ui.label("Existing Entities");
+                    ui.separator();
+                    egui::ScrollArea::vertical()
+                        .max_height(100.0)
+                        .show(ui, |ui| {
+                        for label in &self.entity_descriptions {
+                            ui.label(label);
+                        }
+                    });
+                    ui.separator();
+                    ui.horizontal(|ui| {
+                        if ui.button("Cancel").clicked() {
+                            if let Some(entity_key) = self.selected_entity {
+                                if let Some(entity_description) = self.entity_tiles.get(&entity_key) {
+                                    if entity_description.len() == 0 {
+                                        self.entity_tiles.remove(&entity_key);
+                                    }
+                                }
+                            }
+                            self.show_entity_popup = false;
+                            self.entity_description = "".to_string();
+                        }
+                        if !self.entity_descriptions.contains(&self.entity_description) && self.entity_description.len() > 0 {
+                            if ui.button("Ok").clicked() {
+                                self.show_entity_popup = false;
+                                if let Some(entity_key) = self.selected_entity {
+                                    self.entity_tiles.insert(entity_key, self.entity_description.clone());
+                                    self.entity_descriptions.insert(self.entity_description.clone());
+                                }
+                                self.entity_description = "".to_string();
+                            }
+                        } else {
+                            ui.label("Non unique label!");
+                        }
+                    });
+                });
+        }
+    }
 }
 
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.handle_clear_confirmation(ctx);
+        self.handle_entity_popup(ctx);
         self.handle_toplevel_input(ctx);
         self.top_panel(ctx);
         self.side_panel(ctx);
