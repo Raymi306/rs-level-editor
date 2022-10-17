@@ -55,6 +55,12 @@ enum Mode {
     Entity,
 }
 
+#[derive(PartialEq, Debug)]
+enum ColumnOrientation {
+    Major,
+    Minor,
+}
+
 #[derive(Debug, Clone)]
 enum Action {
     ClickForeground(HashableVec2, Rect, Option<Rect>, bool),
@@ -66,6 +72,7 @@ enum Action {
 struct MyApp {
     spritesheet_info: SpritesheetInfo,
     spritesheet_handle: Option<egui::TextureHandle>,
+    spritesheet_col_orientation: ColumnOrientation,
     foreground_plotted_tiles: HashMap<HashableVec2, Rect>,
     background_plotted_tiles: HashMap<HashableVec2, Rect>,
     collision_tiles: HashSet<HashableVec2>,
@@ -91,6 +98,7 @@ impl Default for MyApp {
         Self {
             spritesheet_info: SpritesheetInfo::default(),
             spritesheet_handle: None,
+            spritesheet_col_orientation: ColumnOrientation::Minor,
             foreground_plotted_tiles: HashMap::new(),
             background_plotted_tiles: HashMap::new(),
             collision_tiles: HashSet::new(),
@@ -356,48 +364,72 @@ impl MyApp {
             ui.add(egui::DragValue::new(&mut self.spritesheet_info.num_rows).clamp_range(1..=255));
             ui.label("Num Columns");
             ui.add(egui::DragValue::new(&mut self.spritesheet_info.num_cols).clamp_range(1..=255));
+            ui.separator();
+            ui.label("Preview Display");
+            ui.radio_value(&mut self.spritesheet_col_orientation, ColumnOrientation::Minor, "Row Major");
+            ui.radio_value(&mut self.spritesheet_col_orientation, ColumnOrientation::Major, "Column Major");
         });
     }
 
+    fn side_panel_sprite_selector_make_img_btn(&self, x: u32, y: u32, handle: &egui::TextureHandle) -> (egui::ImageButton, Rect) {
+        let handle_size = handle.size_vec2();
+        let normalized_x = x as f32 / handle_size.x;
+        let normalized_y = y as f32 / handle_size.y;
+        let max_x = (x as f32
+            + handle_size.x / self.spritesheet_info.num_rows as f32)
+            / handle_size.x;
+        let max_y = (y as f32
+            + handle_size.y / self.spritesheet_info.num_cols as f32)
+            / handle_size.y;
+        let uv = Rect {
+            min: Pos2 {
+                x: normalized_x,
+                y: normalized_y,
+            },
+            max: Pos2 { x: max_x, y: max_y },
+        };
+        let mut img_btn = egui::widgets::ImageButton::new(
+            handle,
+            Vec2 {
+                x: handle_size.x / self.spritesheet_info.num_rows as f32,
+                y: handle_size.y / self.spritesheet_info.num_cols as f32,
+            },
+        )
+        .uv(uv);
+        if self.selected_uv == Some(uv) {
+            img_btn = img_btn.selected(true);
+        }
+        (img_btn, uv)
+    }
     fn side_panel_sprite_selector(&mut self, ui: &mut egui::Ui) {
         ui.horizontal_wrapped(|ui| {
             if let Some(handle) = &self.spritesheet_handle {
                 let handle_size = handle.size_vec2();
-                for x in (0..handle_size.x as u32)
-                    .step_by((handle_size.x / self.spritesheet_info.num_rows as f32) as usize)
-                {
+                if matches!(self.spritesheet_col_orientation, ColumnOrientation::Major) {
+                    for x in (0..handle_size.x as u32)
+                        .step_by((handle_size.x / self.spritesheet_info.num_rows as f32) as usize)
+                    {
+                        for y in (0..handle_size.y as u32)
+                            .step_by((handle_size.y / self.spritesheet_info.num_cols as f32) as usize)
+                        {
+                            let (img_btn, uv) = self.side_panel_sprite_selector_make_img_btn(x, y, handle);
+                            if ui.add(img_btn).clicked() {
+                                self.selected_uv = Some(uv);
+                            };
+                        }
+                    }
+                } else {
                     for y in (0..handle_size.y as u32)
                         .step_by((handle_size.y / self.spritesheet_info.num_cols as f32) as usize)
                     {
-                        let normalized_x = x as f32 / handle_size.x;
-                        let normalized_y = y as f32 / handle_size.y;
-                        let max_x = (x as f32
-                            + handle_size.x / self.spritesheet_info.num_rows as f32)
-                            / handle_size.x;
-                        let max_y = (y as f32
-                            + handle_size.y / self.spritesheet_info.num_cols as f32)
-                            / handle_size.y;
-                        let uv = Rect {
-                            min: Pos2 {
-                                x: normalized_x,
-                                y: normalized_y,
-                            },
-                            max: Pos2 { x: max_x, y: max_y },
-                        };
-                        let mut img_btn = egui::widgets::ImageButton::new(
-                            handle,
-                            Vec2 {
-                                x: handle_size.x / self.spritesheet_info.num_rows as f32,
-                                y: handle_size.y / self.spritesheet_info.num_cols as f32,
-                            },
-                        )
-                        .uv(uv);
-                        if self.selected_uv == Some(uv) {
-                            img_btn = img_btn.selected(true);
+                        for x in (0..handle_size.x as u32)
+                            .step_by((handle_size.x / self.spritesheet_info.num_rows as f32) as usize)
+                        {
+                            let (img_btn, uv) = self.side_panel_sprite_selector_make_img_btn(x, y, handle);
+                            if ui.add(img_btn).clicked() {
+                                self.selected_uv = Some(uv);
+                            };
                         }
-                        if ui.add(img_btn).clicked() {
-                            self.selected_uv = Some(uv);
-                        };
                     }
                 }
             }
