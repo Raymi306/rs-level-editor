@@ -91,6 +91,7 @@ struct MyApp {
     show_background: bool,
     show_collision: bool,
     show_entity: bool,
+    show_grid: bool,
 }
 
 impl Default for MyApp {
@@ -117,6 +118,7 @@ impl Default for MyApp {
             show_background: true,
             show_collision: true,
             show_entity: true,
+            show_grid: true,
         }
     }
 }
@@ -348,6 +350,7 @@ impl MyApp {
                 ui.checkbox(&mut self.show_background, "Background");
                 ui.checkbox(&mut self.show_collision, "Collision");
                 ui.checkbox(&mut self.show_entity, "Entity");
+                ui.checkbox(&mut self.show_grid, "Grid");
             });
         });
     }
@@ -731,54 +734,58 @@ impl MyApp {
     }
     fn plot_panel(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            egui::plot::Plot::new("level_plot")
+            let mut plot = egui::plot::Plot::new("level_plot")
                 .data_aspect(1.0)
                 .x_grid_spacer(egui::widgets::plot::uniform_grid_spacer(|_| {
                     [100.0, 25.0, 1.0]
                 }))
-                .y_grid_spacer(egui::widgets::plot::uniform_grid_spacer(|_| {
-                    [100.0, 25.0, 1.0]
-                }))
-                .allow_boxed_zoom(false)
+            .y_grid_spacer(egui::widgets::plot::uniform_grid_spacer(|_| {
+                [100.0, 25.0, 1.0]
+            }))
+            .allow_boxed_zoom(false)
                 .allow_drag(false)
-                .allow_double_click_reset(false)
-                .show(ui, |plot_ui| {
-                    let ctx = plot_ui.ctx();
-                    //plot_ui.translate(Vec2 {x: 1.0, y: 0.0});
-                    let mut primary_clicked = false;
-                    let mut secondary_clicked = false;
-                    for event in &ctx.input().events {
-                        if let egui::Event::PointerButton {
-                            button, pressed, ..
-                        } = event
-                        {
-                            if *pressed {
-                                match button {
-                                    egui::PointerButton::Primary => primary_clicked = true,
-                                    egui::PointerButton::Secondary => secondary_clicked = true,
-                                    _ => (),
-                                }
+                .allow_double_click_reset(false);
+            if !self.show_grid {
+                plot = plot.show_axes([false, false]);
+            }
+            plot.show(ui, |plot_ui| {
+                let ctx = plot_ui.ctx();
+                //plot_ui.translate(Vec2 {x: 1.0, y: 0.0}); # TODO add alternative means of
+                //navigating plot
+                let mut primary_clicked = false;
+                let mut secondary_clicked = false;
+                for event in &ctx.input().events {
+                    if let egui::Event::PointerButton {
+                        button, pressed, ..
+                    } = event
+                    {
+                        if *pressed {
+                            match button {
+                                egui::PointerButton::Primary => primary_clicked = true,
+                                egui::PointerButton::Secondary => secondary_clicked = true,
+                                _ => (),
                             }
                         }
                     }
-                    let drag_delta = plot_ui.pointer_coordinate_drag_delta();
-                    let is_drag;
+                }
+                let drag_delta = plot_ui.pointer_coordinate_drag_delta();
+                let is_drag;
 
-                    // attempting to stop user from clicking with a slight drag on mouse getting
-                    // detected as a drag within a single square, thus performing 2 actions at once
-                    // TODO a better alternative would be to add the delta with the position and see if
-                    // it steps into another tile
-                    if !(drag_delta.x > -0.05 && drag_delta.x < 0.05)
-                        || !(drag_delta.y > -0.05 && drag_delta.y < 0.05)
+                // attempting to stop user from clicking with a slight drag on mouse getting
+                // detected as a drag within a single square, thus performing 2 actions at once
+                // TODO a better alternative would be to add the delta with the position and see if
+                // it steps into another tile
+                if !(drag_delta.x > -0.05 && drag_delta.x < 0.05)
+                    || !(drag_delta.y > -0.05 && drag_delta.y < 0.05)
                     {
                         is_drag = true;
                     } else {
                         is_drag = false;
                     }
-                    self.handle_plot_clicks(plot_ui, primary_clicked, secondary_clicked, is_drag);
-                    // Draw sprites, background then foreground
-                    self.draw_on_plot(plot_ui);
-                });
+                self.handle_plot_clicks(plot_ui, primary_clicked, secondary_clicked, is_drag);
+                // Draw sprites, background then foreground
+                self.draw_on_plot(plot_ui);
+            });
         });
     }
     fn handle_clear_confirmation(&mut self, ctx: &egui::Context) {
