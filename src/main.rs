@@ -1,6 +1,6 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
-use std::io::prelude::*;
 use std::fs::File;
+use std::io::prelude::*;
 use std::path::PathBuf;
 
 use eframe;
@@ -159,7 +159,8 @@ impl MyApp {
         let len_fg = (self.foreground_plotted_tiles.len() * 20) as u64;
         let len_collision = (self.collision_tiles.len() * 16) as u64;
         let len_entity = (self.entity_tiles.len() * 64) as u64; // we don't know label length
-        let mut buffer: Vec<u8> = Vec::with_capacity((len_bg + len_fg + len_collision + len_entity) as usize);
+        let mut buffer: Vec<u8> =
+            Vec::with_capacity((len_bg + len_fg + len_collision + len_entity) as usize);
         buffer.extend_from_slice(&len_bg.to_le_bytes()); // 36
         buffer.extend_from_slice(&len_fg.to_le_bytes()); // 56
         buffer.extend_from_slice(&len_collision.to_le_bytes()); // 72
@@ -236,8 +237,10 @@ impl MyApp {
             let col = i16::from_le_bytes(chunk[18..20].try_into().unwrap());
             let uv_min_x = row as f32 / handle_size.x;
             let uv_min_y = col as f32 / handle_size.y;
-            let uv_max_x = (row as f32 + handle_size.x / self.spritesheet_info.num_rows as f32) / handle_size.x;
-            let uv_max_y = (col as f32 + handle_size.y / self.spritesheet_info.num_cols as f32) / handle_size.y;
+            let uv_max_x = (row as f32 + handle_size.x / self.spritesheet_info.num_rows as f32)
+                / handle_size.x;
+            let uv_max_y = (col as f32 + handle_size.y / self.spritesheet_info.num_cols as f32)
+                / handle_size.y;
             let uv = Rect {
                 min: Pos2 {
                     x: uv_min_x,
@@ -246,9 +249,10 @@ impl MyApp {
                 max: Pos2 {
                     x: uv_max_x,
                     y: uv_max_y,
-                }
+                },
             };
-            self.background_plotted_tiles.insert(HashableVec2 { x, y }, uv);
+            self.background_plotted_tiles
+                .insert(HashableVec2 { x, y }, uv);
         }
         index += len_bg as usize;
         let foreground_bytes = &buf[index..index + len_fg as usize];
@@ -259,8 +263,10 @@ impl MyApp {
             let col = i16::from_le_bytes(chunk[18..20].try_into().unwrap());
             let uv_min_x = row as f32 / handle_size.x;
             let uv_min_y = col as f32 / handle_size.y;
-            let uv_max_x = (row as f32 + handle_size.x / self.spritesheet_info.num_rows as f32) / handle_size.x;
-            let uv_max_y = (col as f32 + handle_size.y / self.spritesheet_info.num_cols as f32) / handle_size.y;
+            let uv_max_x = (row as f32 + handle_size.x / self.spritesheet_info.num_rows as f32)
+                / handle_size.x;
+            let uv_max_y = (col as f32 + handle_size.y / self.spritesheet_info.num_cols as f32)
+                / handle_size.y;
             let uv = Rect {
                 min: Pos2 {
                     x: uv_min_x,
@@ -269,9 +275,10 @@ impl MyApp {
                 max: Pos2 {
                     x: uv_max_x,
                     y: uv_max_y,
-                }
+                },
             };
-            self.foreground_plotted_tiles.insert(HashableVec2 { x, y }, uv);
+            self.foreground_plotted_tiles
+                .insert(HashableVec2 { x, y }, uv);
         }
         index += len_fg as usize;
         let collision_stride_len = (8 + 8) as usize;
@@ -290,7 +297,9 @@ impl MyApp {
             index += 8;
             let label_len = u64::from_le_bytes(buf[index..index + 8].try_into().unwrap());
             index += 8;
-            let label = String::from_utf8(buf[index..index + label_len as usize].try_into().unwrap()).unwrap();
+            let label =
+                String::from_utf8(buf[index..index + label_len as usize].try_into().unwrap())
+                    .unwrap();
             self.entity_tiles.insert(HashableVec2 { x, y }, label);
             index += label_len as usize;
         }
@@ -508,8 +517,18 @@ impl MyApp {
                 if !is_drag {
                     if let Some(original_uv) = layer_plotted_tiles.remove(&hashable_point) {
                         action = match self.current_mode {
-                            Mode::DrawBackground => Action::ClickBackground(hashable_point, selected_uv, Some(original_uv), is_drag),
-                            Mode::DrawForeground => Action::ClickForeground(hashable_point, selected_uv, Some(original_uv), is_drag),
+                            Mode::DrawBackground => Action::ClickBackground(
+                                hashable_point,
+                                selected_uv,
+                                Some(original_uv),
+                                is_drag,
+                            ),
+                            Mode::DrawForeground => Action::ClickForeground(
+                                hashable_point,
+                                selected_uv,
+                                Some(original_uv),
+                                is_drag,
+                            ),
                             _ => unreachable!(),
                         };
                     } else {
@@ -518,11 +537,23 @@ impl MyApp {
                     self.undo_queue.push(action);
                     self.redo_queue.clear();
                 } else {
-                    if let Some(original_uv) = layer_plotted_tiles.insert(hashable_point, selected_uv) {
+                    if let Some(original_uv) =
+                        layer_plotted_tiles.insert(hashable_point, selected_uv)
+                    {
                         if original_uv != selected_uv {
                             action = match self.current_mode {
-                                Mode::DrawBackground => Action::ClickBackground(hashable_point, selected_uv, Some(original_uv), is_drag),
-                                Mode::DrawForeground => Action::ClickForeground(hashable_point, selected_uv, Some(original_uv), is_drag),
+                                Mode::DrawBackground => Action::ClickBackground(
+                                    hashable_point,
+                                    selected_uv,
+                                    Some(original_uv),
+                                    is_drag,
+                                ),
+                                Mode::DrawForeground => Action::ClickForeground(
+                                    hashable_point,
+                                    selected_uv,
+                                    Some(original_uv),
+                                    is_drag,
+                                ),
                                 _ => unreachable!(),
                             };
                             self.undo_queue.push(action);
@@ -591,7 +622,8 @@ impl MyApp {
                     self.prev_entity_description = "".to_owned();
                     self.selected_entity = Some(hashable_point);
                 }
-                self.undo_queue.push(Action::ClickEntity(hashable_point, action_label));
+                self.undo_queue
+                    .push(Action::ClickEntity(hashable_point, action_label));
                 self.redo_queue.clear();
             }
         } else if secondary_clicked {
@@ -825,7 +857,8 @@ impl MyApp {
                             }
                         } else {
                             self.foreground_plotted_tiles.insert(point, old_uv);
-                            cloned_action = Action::ClickForeground(point, old_uv, Some(uv), is_drag)
+                            cloned_action =
+                                Action::ClickForeground(point, old_uv, Some(uv), is_drag)
                         }
                     } else {
                         if self.foreground_plotted_tiles.contains_key(&point) {
@@ -834,7 +867,7 @@ impl MyApp {
                             self.foreground_plotted_tiles.insert(point, uv);
                         }
                     }
-                },
+                }
                 Action::ClickBackground(point, uv, old_uv_maybe, is_drag) => {
                     if let Some(old_uv) = old_uv_maybe {
                         if !is_drag {
@@ -845,7 +878,8 @@ impl MyApp {
                             }
                         } else {
                             self.background_plotted_tiles.insert(point, old_uv);
-                            cloned_action = Action::ClickBackground(point, old_uv, Some(uv), is_drag)
+                            cloned_action =
+                                Action::ClickBackground(point, old_uv, Some(uv), is_drag)
                         }
                     } else {
                         if self.background_plotted_tiles.contains_key(&point) {
@@ -854,14 +888,14 @@ impl MyApp {
                             self.background_plotted_tiles.insert(point, uv);
                         }
                     }
-                },
+                }
                 Action::ClickCollision(point) => {
                     if self.collision_tiles.contains(&point) {
                         self.collision_tiles.remove(&point);
                     } else {
                         self.collision_tiles.insert(point);
                     }
-                },
+                }
                 Action::ClickEntity(point, attached_label) => {
                     if let Some(label) = self.entity_tiles.get(&point) {
                         let label_clone = label.clone();
@@ -874,7 +908,7 @@ impl MyApp {
                             self.entity_descriptions.insert(label.clone());
                         }
                     }
-                },
+                }
             };
             if is_undo {
                 self.redo_queue.push(cloned_action);
@@ -905,17 +939,17 @@ impl MyApp {
                 if !*pressed {
                     match (key, modifiers) {
                         (egui::Key::M, _) => self.toggle_current_mode(),
-                        (egui::Key::Z, egui::Modifiers {ctrl, ..}) => {
+                        (egui::Key::Z, egui::Modifiers { ctrl, .. }) => {
                             if *ctrl {
                                 self.handle_undo_redo(true);
                             }
-                        },
-                        (egui::Key::R, egui::Modifiers {ctrl, ..}) => {
+                        }
+                        (egui::Key::R, egui::Modifiers { ctrl, .. }) => {
                             if *ctrl {
                                 self.handle_undo_redo(false);
                             }
-                        },
-                        (egui::Key::O, egui::Modifiers {ctrl, ..}) => {
+                        }
+                        (egui::Key::O, egui::Modifiers { ctrl, .. }) => {
                             if *ctrl {
                                 let mut open_path = None;
                                 pick_file_to(&mut open_path, ("Level", &["lvl"]));
@@ -924,7 +958,7 @@ impl MyApp {
                                 }
                             }
                         }
-                        (egui::Key::S, egui::Modifiers {ctrl, ..}) => {
+                        (egui::Key::S, egui::Modifiers { ctrl, .. }) => {
                             if *ctrl {
                                 let mut save_path = None;
                                 save_file_to(&mut save_path, ("Level", &["lvl"]));
