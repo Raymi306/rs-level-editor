@@ -131,6 +131,16 @@ fn save_file_to(var: &mut Option<PathBuf>, filter: (&str, &[&str])) {
 }
 
 impl MyApp {
+    fn clear(&mut self) {
+        self.show_clear_confirmation = false;
+        self.foreground_plotted_tiles.clear();
+        self.background_plotted_tiles.clear();
+        self.collision_tiles.clear();
+        self.entity_descriptions.clear();
+        self.entity_tiles.clear();
+        self.undo_queue.clear();
+        self.redo_queue.clear();
+    }
     fn save(&mut self, path: PathBuf) {
         let display = path.display();
         let mut file = match File::create(&path) {
@@ -196,6 +206,7 @@ impl MyApp {
         if self.spritesheet_handle.is_none() {
             return;
         }
+        self.clear();
         let handle = self.spritesheet_handle.as_ref().unwrap();
         let handle_size = handle.size_vec2();
 
@@ -225,8 +236,8 @@ impl MyApp {
             let col = i16::from_le_bytes(chunk[18..20].try_into().unwrap());
             let uv_min_x = row as f32 / handle_size.x;
             let uv_min_y = col as f32 / handle_size.y;
-            let uv_max_x = (x as f32 + handle_size.x / self.spritesheet_info.num_rows as f32) / handle_size.x;
-            let uv_max_y = (y as f32 + handle_size.y / self.spritesheet_info.num_cols as f32) / handle_size.y;
+            let uv_max_x = (row as f32 + handle_size.x / self.spritesheet_info.num_rows as f32) / handle_size.x;
+            let uv_max_y = (col as f32 + handle_size.y / self.spritesheet_info.num_cols as f32) / handle_size.y;
             let uv = Rect {
                 min: Pos2 {
                     x: uv_min_x,
@@ -239,7 +250,7 @@ impl MyApp {
             };
             self.background_plotted_tiles.insert(HashableVec2 { x, y }, uv);
         }
-        index += len_fg as usize;
+        index += len_bg as usize;
         let foreground_bytes = &buf[index..index + len_fg as usize];
         for chunk in foreground_bytes.chunks_exact(bg_fg_stride_len) {
             let x = i64::from_le_bytes(chunk[0..8].try_into().unwrap());
@@ -248,8 +259,8 @@ impl MyApp {
             let col = i16::from_le_bytes(chunk[18..20].try_into().unwrap());
             let uv_min_x = row as f32 / handle_size.x;
             let uv_min_y = col as f32 / handle_size.y;
-            let uv_max_x = (x as f32 + handle_size.x / self.spritesheet_info.num_rows as f32) / handle_size.x;
-            let uv_max_y = (y as f32 + handle_size.y / self.spritesheet_info.num_cols as f32) / handle_size.y;
+            let uv_max_x = (row as f32 + handle_size.x / self.spritesheet_info.num_rows as f32) / handle_size.x;
+            let uv_max_y = (col as f32 + handle_size.y / self.spritesheet_info.num_cols as f32) / handle_size.y;
             let uv = Rect {
                 min: Pos2 {
                     x: uv_min_x,
@@ -262,7 +273,7 @@ impl MyApp {
             };
             self.foreground_plotted_tiles.insert(HashableVec2 { x, y }, uv);
         }
-        index += len_bg as usize;
+        index += len_fg as usize;
         let collision_stride_len = (8 + 8) as usize;
         let collision_bytes = &buf[index..index + len_collision as usize];
         for chunk in collision_bytes.chunks_exact(collision_stride_len) {
@@ -271,15 +282,15 @@ impl MyApp {
             self.collision_tiles.insert(HashableVec2 { x, y });
         }
         index += len_collision as usize;
-        let entity_bytes = &buf[index..];
-        while index < entity_bytes.len() {
-            let x = i64::from_le_bytes(entity_bytes[index..index + 8].try_into().unwrap());
+        let len = buf.len();
+        while index < len {
+            let x = i64::from_le_bytes(buf[index..index + 8].try_into().unwrap());
             index += 8;
-            let y = i64::from_le_bytes(entity_bytes[index..index + 8].try_into().unwrap());
+            let y = i64::from_le_bytes(buf[index..index + 8].try_into().unwrap());
             index += 8;
-            let label_len = u64::from_le_bytes(entity_bytes[index..index + 8].try_into().unwrap());
+            let label_len = u64::from_le_bytes(buf[index..index + 8].try_into().unwrap());
             index += 8;
-            let label = String::from_utf8(entity_bytes[index..index + label_len as usize].try_into().unwrap()).unwrap();
+            let label = String::from_utf8(buf[index..index + label_len as usize].try_into().unwrap()).unwrap();
             self.entity_tiles.insert(HashableVec2 { x, y }, label);
             index += label_len as usize;
         }
@@ -506,11 +517,22 @@ impl MyApp {
                         self.redo_queue.clear();
                     }
                 }
-            } else if secondary_clicked {
-                if let Some(uv) = layer_plotted_tiles.get(&hashable_point) {
-                    self.selected_uv = Some(*uv);
-                }
             }
+        }
+        if secondary_clicked {
+            match self.current_mode {
+                Mode::DrawBackground => {
+                    if let Some(uv) = self.background_plotted_tiles.get(&hashable_point) {
+                        self.selected_uv = Some(*uv);
+                    }
+                }
+                Mode::DrawForeground => {
+                    if let Some(uv) = self.foreground_plotted_tiles.get(&hashable_point) {
+                        self.selected_uv = Some(*uv);
+                    }
+                }
+                _ => unreachable!(),
+            };
         }
     }
     fn handle_plot_collision_clicks(
@@ -690,14 +712,7 @@ impl MyApp {
                             self.show_clear_confirmation = false;
                         }
                         if ui.button("Ok").clicked() {
-                            self.show_clear_confirmation = false;
-                            self.foreground_plotted_tiles.clear();
-                            self.background_plotted_tiles.clear();
-                            self.collision_tiles.clear();
-                            self.entity_descriptions.clear();
-                            self.entity_tiles.clear();
-                            self.undo_queue.clear();
-                            self.redo_queue.clear();
+                            self.clear();
                         }
                     });
                 });
