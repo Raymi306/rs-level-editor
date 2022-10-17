@@ -2,9 +2,7 @@
 name = "rs-level-editor"
 version = "1.0.0"
 edition = "2021"
-author = "Andrew Langmeier"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+authors = ["Andrew Langmeier <raymi306@gmail.com>"]
 
 [dependencies]
 eframe = { git = "https://github.com/emilk/egui" }
