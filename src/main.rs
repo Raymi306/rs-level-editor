@@ -57,8 +57,8 @@ enum Mode {
 
 #[derive(Debug, Clone)]
 enum Action {
-    ClickForeground(HashableVec2, Rect),
-    ClickBackground(HashableVec2, Rect),
+    ClickForeground(HashableVec2, Rect, Option<Rect>, bool),
+    ClickBackground(HashableVec2, Rect, Option<Rect>, bool),
     ClickCollision(HashableVec2),
     ClickEntity(HashableVec2, Option<String>),
 }
@@ -493,26 +493,42 @@ impl MyApp {
         hashable_point: HashableVec2,
     ) {
         if let Some(selected_uv) = self.selected_uv {
-            let (layer_plotted_tiles, action) = match self.current_mode {
+            let (layer_plotted_tiles, mut action) = match self.current_mode {
                 Mode::DrawBackground => (
                     &mut self.background_plotted_tiles,
-                    Action::ClickBackground(hashable_point, selected_uv),
+                    Action::ClickBackground(hashable_point, selected_uv, None, is_drag),
                 ),
                 Mode::DrawForeground => (
                     &mut self.foreground_plotted_tiles,
-                    Action::ClickForeground(hashable_point, selected_uv),
+                    Action::ClickForeground(hashable_point, selected_uv, None, is_drag),
                 ),
                 _ => unreachable!(),
             };
             if primary_clicked || is_drag {
                 if !is_drag {
-                    if let None = layer_plotted_tiles.remove(&hashable_point) {
+                    if let Some(original_uv) = layer_plotted_tiles.remove(&hashable_point) {
+                        action = match self.current_mode {
+                            Mode::DrawBackground => Action::ClickBackground(hashable_point, selected_uv, Some(original_uv), is_drag),
+                            Mode::DrawForeground => Action::ClickForeground(hashable_point, selected_uv, Some(original_uv), is_drag),
+                            _ => unreachable!(),
+                        };
+                    } else {
                         layer_plotted_tiles.insert(hashable_point, selected_uv);
-                        self.undo_queue.push(action);
-                        self.redo_queue.clear();
                     }
+                    self.undo_queue.push(action);
+                    self.redo_queue.clear();
                 } else {
-                    if let None = layer_plotted_tiles.insert(hashable_point, selected_uv) {
+                    if let Some(original_uv) = layer_plotted_tiles.insert(hashable_point, selected_uv) {
+                        if original_uv != selected_uv {
+                            action = match self.current_mode {
+                                Mode::DrawBackground => Action::ClickBackground(hashable_point, selected_uv, Some(original_uv), is_drag),
+                                Mode::DrawForeground => Action::ClickForeground(hashable_point, selected_uv, Some(original_uv), is_drag),
+                                _ => unreachable!(),
+                            };
+                            self.undo_queue.push(action);
+                            self.redo_queue.clear();
+                        }
+                    } else {
                         self.undo_queue.push(action);
                         self.redo_queue.clear();
                     }
@@ -545,9 +561,9 @@ impl MyApp {
             if !is_drag {
                 if !self.collision_tiles.remove(&hashable_point) {
                     self.collision_tiles.insert(hashable_point);
-                    self.undo_queue.push(Action::ClickCollision(hashable_point));
-                    self.redo_queue.clear();
                 }
+                self.undo_queue.push(Action::ClickCollision(hashable_point));
+                self.redo_queue.clear();
             } else {
                 if self.collision_tiles.insert(hashable_point) {
                     self.undo_queue.push(Action::ClickCollision(hashable_point));
@@ -799,18 +815,44 @@ impl MyApp {
         if let Some(action) = queue.pop() {
             let mut cloned_action = action.clone();
             match action {
-                Action::ClickForeground(point, uv) => {
-                    if self.foreground_plotted_tiles.contains_key(&point) {
-                        self.foreground_plotted_tiles.remove(&point);
+                Action::ClickForeground(point, uv, old_uv_maybe, is_drag) => {
+                    if let Some(old_uv) = old_uv_maybe {
+                        if !is_drag {
+                            if self.foreground_plotted_tiles.contains_key(&point) {
+                                self.foreground_plotted_tiles.remove(&point);
+                            } else {
+                                self.foreground_plotted_tiles.insert(point, old_uv);
+                            }
+                        } else {
+                            self.foreground_plotted_tiles.insert(point, old_uv);
+                            cloned_action = Action::ClickForeground(point, old_uv, Some(uv), is_drag)
+                        }
                     } else {
-                        self.foreground_plotted_tiles.insert(point, uv);
+                        if self.foreground_plotted_tiles.contains_key(&point) {
+                            self.foreground_plotted_tiles.remove(&point);
+                        } else {
+                            self.foreground_plotted_tiles.insert(point, uv);
+                        }
                     }
                 },
-                Action::ClickBackground(point, uv) => {
-                    if self.background_plotted_tiles.contains_key(&point) {
-                        self.background_plotted_tiles.remove(&point);
+                Action::ClickBackground(point, uv, old_uv_maybe, is_drag) => {
+                    if let Some(old_uv) = old_uv_maybe {
+                        if !is_drag {
+                            if self.background_plotted_tiles.contains_key(&point) {
+                                self.background_plotted_tiles.remove(&point);
+                            } else {
+                                self.background_plotted_tiles.insert(point, old_uv);
+                            }
+                        } else {
+                            self.background_plotted_tiles.insert(point, old_uv);
+                            cloned_action = Action::ClickBackground(point, old_uv, Some(uv), is_drag)
+                        }
                     } else {
-                        self.background_plotted_tiles.insert(point, uv);
+                        if self.background_plotted_tiles.contains_key(&point) {
+                            self.background_plotted_tiles.remove(&point);
+                        } else {
+                            self.background_plotted_tiles.insert(point, uv);
+                        }
                     }
                 },
                 Action::ClickCollision(point) => {
