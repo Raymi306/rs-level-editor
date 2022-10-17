@@ -873,6 +873,24 @@ impl MyApp {
                                 self.handle_undo_redo(false);
                             }
                         },
+                        (egui::Key::O, egui::Modifiers {ctrl, ..}) => {
+                            if *ctrl {
+                                let mut open_path = None;
+                                pick_file_to(&mut open_path, ("Level", &["lvl"]));
+                                if let Some(path) = open_path {
+                                    self.open(path);
+                                }
+                            }
+                        }
+                        (egui::Key::S, egui::Modifiers {ctrl, ..}) => {
+                            if *ctrl {
+                                let mut save_path = None;
+                                save_file_to(&mut save_path, ("Level", &["lvl"]));
+                                if let Some(path) = save_path {
+                                    self.save(path);
+                                }
+                            }
+                        }
                         _ => (),
                     };
                 }
