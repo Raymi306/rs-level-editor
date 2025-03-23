@@ -81,7 +81,7 @@ impl MyApp {
             buffer.extend_from_slice(&x);
             buffer.extend_from_slice(&y);
             buffer.extend_from_slice(&label_len);
-            buffer.extend_from_slice(&label);
+            buffer.extend_from_slice(label);
         }
         file.write_all(&buffer).unwrap();
         file.flush().unwrap();
@@ -181,9 +181,7 @@ impl MyApp {
             index += 8;
             let label_len = u64::from_le_bytes(buf[index..index + 8].try_into().unwrap());
             index += 8;
-            let label =
-                String::from_utf8(buf[index..index + label_len as usize].try_into().unwrap())
-                    .unwrap();
+            let label = String::from_utf8(buf[index..index + label_len as usize].into()).unwrap();
             self.entity_tiles.insert(HashableVec2 { x, y }, label);
             index += label_len as usize;
         }

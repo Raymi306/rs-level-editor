@@ -27,9 +27,12 @@ impl MyApp {
             let min = plot_bounds.min();
             let max = plot_bounds.max();
             let hashable_point = HashableVec2::from(point);
-            if !(coord.x < min[0] || coord.x > max[0] || coord.y < min[1] || coord.y > max[1])
-                && !self.show_clear_confirmation
-                && !self.show_entity_popup
+            if !(coord.x < min[0]
+                || coord.x > max[0]
+                || coord.y < min[1]
+                || coord.y > max[1]
+                || self.show_clear_confirmation
+                || self.show_entity_popup)
             // stop when pop ups are open
             {
                 match self.current_mode {
@@ -98,33 +101,31 @@ impl MyApp {
                     }
                     self.undo_queue.push(action);
                     self.redo_queue.clear();
-                } else {
-                    if let Some(original_uv) =
-                        layer_plotted_tiles.insert(hashable_point, selected_uv)
-                    {
-                        if original_uv != selected_uv {
-                            action = match self.current_mode {
-                                Mode::DrawBackground => Action::ClickBackground(
-                                    hashable_point,
-                                    selected_uv,
-                                    Some(original_uv),
-                                    is_drag,
-                                ),
-                                Mode::DrawForeground => Action::ClickForeground(
-                                    hashable_point,
-                                    selected_uv,
-                                    Some(original_uv),
-                                    is_drag,
-                                ),
-                                _ => unreachable!(),
-                            };
-                            self.undo_queue.push(action);
-                            self.redo_queue.clear();
-                        }
-                    } else {
+                } else if let Some(original_uv) =
+                    layer_plotted_tiles.insert(hashable_point, selected_uv)
+                {
+                    if original_uv != selected_uv {
+                        action = match self.current_mode {
+                            Mode::DrawBackground => Action::ClickBackground(
+                                hashable_point,
+                                selected_uv,
+                                Some(original_uv),
+                                is_drag,
+                            ),
+                            Mode::DrawForeground => Action::ClickForeground(
+                                hashable_point,
+                                selected_uv,
+                                Some(original_uv),
+                                is_drag,
+                            ),
+                            _ => unreachable!(),
+                        };
                         self.undo_queue.push(action);
                         self.redo_queue.clear();
                     }
+                } else {
+                    self.undo_queue.push(action);
+                    self.redo_queue.clear();
                 }
             }
         }
@@ -157,11 +158,9 @@ impl MyApp {
                 }
                 self.undo_queue.push(Action::ClickCollision(hashable_point));
                 self.redo_queue.clear();
-            } else {
-                if self.collision_tiles.insert(hashable_point) {
-                    self.undo_queue.push(Action::ClickCollision(hashable_point));
-                    self.redo_queue.clear();
-                }
+            } else if self.collision_tiles.insert(hashable_point) {
+                self.undo_queue.push(Action::ClickCollision(hashable_point));
+                self.redo_queue.clear();
             }
         }
     }
@@ -248,8 +247,8 @@ impl MyApp {
         if self.show_entity {
             let entity_plot_points: Vec<[f64; 2]> = self
                 .entity_tiles
-                .iter()
-                .map(|(point, _)| [point.x as f64 + 0.5, point.y as f64 + 0.5])
+                .keys()
+                .map(|point| [point.x as f64 + 0.5, point.y as f64 + 0.5])
                 .collect();
             let entity_points = egui::plot::Points::new(entity_plot_points)
                 .filled(false)
@@ -296,19 +295,15 @@ impl MyApp {
                     }
                 }
                 let drag_delta = plot_ui.pointer_coordinate_drag_delta();
-                let is_drag;
 
                 // attempting to stop user from clicking with a slight drag on mouse getting
                 // detected as a drag within a single square, thus performing 2 actions at once
                 // TODO a better alternative would be to add the delta with the position and see if
                 // it steps into another tile
-                if !(drag_delta.x > -0.05 && drag_delta.x < 0.05)
-                    || !(drag_delta.y > -0.05 && drag_delta.y < 0.05)
-                {
-                    is_drag = true;
-                } else {
-                    is_drag = false;
-                }
+                let is_drag = !(drag_delta.x > -0.05
+                    && drag_delta.x < 0.05
+                    && drag_delta.y > -0.05
+                    && drag_delta.y < 0.05);
                 self.handle_plot_clicks(plot_ui, primary_clicked, secondary_clicked, is_drag);
                 // Draw sprites, background then foreground
                 self.draw_on_plot(plot_ui);

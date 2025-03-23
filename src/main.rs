@@ -1,6 +1,5 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 
-use eframe;
 use eframe::egui;
 use eframe::egui::Rect;
 
@@ -92,43 +91,47 @@ impl MyApp {
                 Action::ClickForeground(point, uv, old_uv_maybe, is_drag) => {
                     if let Some(old_uv) = old_uv_maybe {
                         if !is_drag {
-                            if self.foreground_plotted_tiles.contains_key(&point) {
-                                self.foreground_plotted_tiles.remove(&point);
+                            if let std::collections::hash_map::Entry::Vacant(e) =
+                                self.foreground_plotted_tiles.entry(point)
+                            {
+                                e.insert(old_uv);
                             } else {
-                                self.foreground_plotted_tiles.insert(point, old_uv);
+                                self.foreground_plotted_tiles.remove(&point);
                             }
                         } else {
                             self.foreground_plotted_tiles.insert(point, old_uv);
                             cloned_action =
                                 Action::ClickForeground(point, old_uv, Some(uv), is_drag)
                         }
+                    } else if let std::collections::hash_map::Entry::Vacant(e) =
+                        self.foreground_plotted_tiles.entry(point)
+                    {
+                        e.insert(uv);
                     } else {
-                        if self.foreground_plotted_tiles.contains_key(&point) {
-                            self.foreground_plotted_tiles.remove(&point);
-                        } else {
-                            self.foreground_plotted_tiles.insert(point, uv);
-                        }
+                        self.foreground_plotted_tiles.remove(&point);
                     }
                 }
                 Action::ClickBackground(point, uv, old_uv_maybe, is_drag) => {
                     if let Some(old_uv) = old_uv_maybe {
                         if !is_drag {
-                            if self.background_plotted_tiles.contains_key(&point) {
-                                self.background_plotted_tiles.remove(&point);
+                            if let std::collections::hash_map::Entry::Vacant(e) =
+                                self.background_plotted_tiles.entry(point)
+                            {
+                                e.insert(old_uv);
                             } else {
-                                self.background_plotted_tiles.insert(point, old_uv);
+                                self.background_plotted_tiles.remove(&point);
                             }
                         } else {
                             self.background_plotted_tiles.insert(point, old_uv);
                             cloned_action =
                                 Action::ClickBackground(point, old_uv, Some(uv), is_drag)
                         }
+                    } else if let std::collections::hash_map::Entry::Vacant(e) =
+                        self.background_plotted_tiles.entry(point)
+                    {
+                        e.insert(uv);
                     } else {
-                        if self.background_plotted_tiles.contains_key(&point) {
-                            self.background_plotted_tiles.remove(&point);
-                        } else {
-                            self.background_plotted_tiles.insert(point, uv);
-                        }
+                        self.background_plotted_tiles.remove(&point);
                     }
                 }
                 Action::ClickCollision(point) => {
@@ -144,11 +147,9 @@ impl MyApp {
                         self.entity_descriptions.remove(label);
                         self.entity_tiles.remove(&point);
                         cloned_action = Action::ClickEntity(point, Some(label_clone));
-                    } else {
-                        if let Some(label) = attached_label {
-                            self.entity_tiles.insert(point, label.clone());
-                            self.entity_descriptions.insert(label.clone());
-                        }
+                    } else if let Some(label) = attached_label {
+                        self.entity_tiles.insert(point, label.clone());
+                        self.entity_descriptions.insert(label.clone());
                     }
                 }
             };

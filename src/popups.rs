@@ -26,7 +26,7 @@ impl MyApp {
         if let Some(entity_key) = self.selected_entity {
             return (
                 !self.entity_descriptions.contains(&self.entity_description)
-                    && self.entity_description.len() != 0,
+                    && !self.entity_description.is_empty(),
                 entity_key,
             );
         }

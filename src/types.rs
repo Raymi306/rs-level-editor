@@ -55,6 +55,7 @@ pub enum ColumnOrientation {
     Minor,
 }
 
+#[expect(clippy::enum_variant_names)]
 #[derive(Debug, Clone)]
 pub enum Action {
     ClickForeground(HashableVec2, Rect, Option<Rect>, bool),
